@@ -6,20 +6,10 @@ import numpy as np
 
 class Heatmap(object):
     """
-    Jupyter widget for exploring the funding distribution across the UK per year.
-    Additionally has options to display funding for all years and to normalise funding
-    per capita
+    A heat map widget for Jupyter notebooks that interfaces with Google Maps. It expects data in a numpy array. Weights are used for the heat in the map and norms for normalizing (e.g. by population).
     """
 
     def __init__(self, latitudes, longitudes, dates, weights, norms, center=[54, 0], zoom=6):
-        """
-        Input pandas.DataFrame. Must have the following fields:
-            funding_amount
-            lat_coordinate
-            lon_coordinate
-            funding_per_capita
-            year - needs to be a 4 letter string
-        """
         self.center = center
         self.zoom = zoom
         self.latitudes = latitudes
@@ -29,7 +19,6 @@ class Heatmap(object):
         self.weights = weights / weights.max()
         self.norm_weights = weights * norms
         self.norm_weights = self.norm_weights / self.norm_weights.max()
-        self.slider = None
         self.norm_val = False
         initial_date = self.dates.min()
 
@@ -42,32 +31,31 @@ class Heatmap(object):
     def render(self):
         display(self._container)
 
-    def on_year_change(self, change):
-        """Change data to be displayed based on the year selected"""
-        date = self.slider.value
+    def on_date_change(self, change):
+        date = self._slider.value
         relevant_ix = self.locations_for_date(date)
         self.heatmap.locations = self.coordinates[relevant_ix]
-        if self.norm_val:
-            self.heatmap.weights = self.norm_weights[relevant_ix]
-        else:
-            self.heatmap.weights = self.weights[relevant_ix]
+        self.update_norms(relevant_ix)
         return self._container
 
     def toggle_all_dates(self, b):
         self.heatmap.locations = self.coordinates
+        self.update_norms()
+        return self._container
+    
+    def update_norms(self, relevant_ix=None):
+        if relevant_ix is None:
+            relevant_ix = np.ones(len(self.weights))
+
         if self.norm_val:
             self.heatmap.weights = self.norm_weights
         else:
             self.heatmap.weights = self.weights
-        return self._container
 
     def normalize(self, value):
         if value['name'] == 'value':
             self.norm_val = value['new']
-            if value['new']:
-                self.heatmap.weights = self.norm_weights
-            else:
-                self.heatmap.weights = self.weights
+            self.update_norms()
             return self._container
 
     def render_map(self, initial_date):
@@ -81,13 +69,13 @@ class Heatmap(object):
         return fig
 
     def render_controls(self, initial_date):
-        self.slider = widgets.IntSlider(
+        self._slider = widgets.IntSlider(
             value=initial_date,
             min=self.dates.min(),
             max=self.dates.max(),
             description='Date',
             continuous_update=False)
-        self.slider.observe(self.on_year_change, names='value')
+        self._slider.observe(self.on_date_change, names='value')
 
         self._all_dates_button = widgets.Button(description="All dates")
         self._all_dates_button.on_click(self.toggle_all_dates)
@@ -100,11 +88,10 @@ class Heatmap(object):
         self._norm_capita_checkbox.observe(self.normalize)
 
         controls = widgets.HBox(
-            [self._all_dates_button, self.slider, self._norm_capita_checkbox],
+            [self._all_dates_button, self._slider, self._norm_capita_checkbox],
             layout={'justify_content': 'space-between'}
         )
         return controls
 
     def locations_for_date(self, date):
-        """Get dataset only for the selected year"""
         return self.dates == date
